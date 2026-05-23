@@ -12,115 +12,172 @@ const ARGON2_CONFIG = {
 
 const controller = {}     // Objeto vazio
 
-controller.create = async function (req, res) {
-  try {
+controller.create = async function(req, res) {
+ try {
 
-    // Caso exista o campo "password" em req.body, é
-    // necessário gerar o hash da senha antes de
-    // armazená-la no BD, usando o algoritmo argon2
-    if (req.body.password) {
-      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
-    }
 
-    await prisma.user.create({ data: req.body })
+   // Somente usuários administradores podem acessar este recurso
+   // HTTP 403: Forbidden(
+   if(! req?.authUser?.is_admin) return res.status(403).end()
 
-    // HTTP 201: Created
-    res.status(201).end()
-  }
-  catch (error) {
-    console.error(error)
 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
+   // Caso exista o campo "password" em req.body, é
+   // necessário gerar o hash da senha antes de
+   // armazená-la no BD, usando o algoritmo argon2
+   if(req.body.password) {
+     req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+   }
+
+
+   await prisma.user.create({ data: req.body })
+
+
+   // HTTP 201: Created
+   res.status(201).end()
+ }
+ catch(error) {
+   console.error(error)
+
+
+   // HTTP 500: Internal Server Error
+   res.status(500).end()
+ }
 }
 
-controller.retrieveAll = async function (req, res) {
-  try {
-    const result = await prisma.user.findMany()
 
-    // HTTP 200: OK (implícito)
-    res.send(result)
-  }
-  catch (error) {
-    console.error(error)
+controller.retrieveAll = async function(req, res) {
+ try {
 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
+
+   // Somente usuários administradores podem acessar este recurso
+   // HTTP 403: Forbidden
+   if(! req?.authUser?.is_admin) return res.status(403).end()
+
+
+   const result = await prisma.user.findMany({
+     omit: { password: true }
+   })
+
+
+   // HTTP 200: OK (implícito)
+   res.send(result)
+ }
+ catch(error) {
+   console.error(error)
+
+
+   // HTTP 500: Internal Server Error
+   res.status(500).end()
+ }
 }
 
-controller.retrieveOne = async function (req, res) {
-  try {
-    const result = await prisma.user.findUnique({
-      where: { id: Number(req.params.id) }
-    })
 
-    // Encontrou ~> retorna HTTP 200: OK (implícito)
-    if (result) res.send(result)
-    // Não encontrou ~> retorna HTTP 404: Not Found
-    else res.status(404).end()
-  }
-  catch (error) {
-    console.error(error)
+controller.retrieveOne = async function(req, res) {
+ try {
 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
+
+   // Somente usuários administradores ou o próprio usuário
+   // autenticado podem acessar este recurso
+   // HTTP 403: Forbidden
+   if(! (req?.authUser?.is_admin ||
+     Number(req?.authUser?.id) === Number(req.params.id)))
+     return res.status(403).end()
+
+
+   const result = await prisma.user.findUnique({
+     omit: { password: true },
+     where: { id: Number(req.params.id) }
+   })
+
+
+   // Encontrou ~> retorna HTTP 200: OK (implícito)
+   if(result) res.send(result)
+   // Não encontrou ~> retorna HTTP 404: Not Found
+   else res.status(404).end()
+ }
+ catch(error) {
+   console.error(error)
+
+
+   // HTTP 500: Internal Server Error
+   res.status(500).end()
+ }
 }
 
-controller.update = async function (req, res) {
-  try {
 
-    // Caso exista o campo "password" em req.body, é
-    // necessário gerar o hash da senha antes de
-    // armazená-la no BD, usando o algoritmo argon2
-    if (req.body.password) {
-      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
-    }
+controller.update = async function(req, res) {
+ try {
 
 
-    const result = await prisma.user.update({
-      where: { id: Number(req.params.id) },
-      data: req.body
-    })
+   // Somente usuários administradores ou o próprio usuário
+   // autenticado podem acessar este recurso
+   // HTTP 403: Forbidden
+   if(! (req?.authUser?.is_admin ||
+     Number(req?.authUser?.id) === Number(req.params.id)))
+     return res.status(403).end()
 
-    // Encontrou e atualizou ~> HTTP 204: No Content
-    if (result) res.status(204).end()
-    // Não encontrou (e não atualizou) ~> HTTP 404: Not Found
-    else res.status(404).end()
-  }
-  catch (error) {
-    console.error(error)
 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
+   // Caso exista o campo "password" em req.body, é
+   // necessário gerar o hash da senha antes de
+   // armazená-la no BD, usando o algoritmo argon2
+   if(req.body.password) {
+     req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+   }
+
+
+   const result = await prisma.user.update({
+     where: { id: Number(req.params.id) },
+     data: req.body
+   })
+
+
+   // Encontrou e atualizou ~> HTTP 204: No Content
+   if(result) res.status(204).end()
+   // Não encontrou (e não atualizou) ~> HTTP 404: Not Found
+   else res.status(404).end()
+ }
+ catch(error) {
+   console.error(error)
+
+
+   // HTTP 500: Internal Server Error
+   res.status(500).end()
+ }
 }
 
-controller.delete = async function (req, res) {
-  try {
-    await prisma.user.delete({
-      where: { id: Number(req.params.id) }
-    })
 
-    // Encontrou e excluiu ~> HTTP 204: No Content
-    res.status(204).end()
-  }
-  catch (error) {
-    if (error?.code === 'P2025') {
-      // Não encontrou e não excluiu ~> HTTP 404: Not Found
-      res.status(404).end()
-    }
-    else {
-      // Outros tipos de erro
-      console.error(error)
+controller.delete = async function(req, res) {
+ try {
 
-      // HTTP 500: Internal Server Error
-      res.status(500).end()
-    }
-  }
+
+   // Somente usuários administradores podem acessar este recurso
+   // HTTP 403: Forbidden
+   if(! req?.authUser?.is_admin) return res.status(403).end()
+    
+   await prisma.user.delete({
+     where: { id: Number(req.params.id) }
+   })
+
+
+   // Encontrou e excluiu ~> HTTP 204: No Content
+   res.status(204).end()
+ }
+ catch(error) {
+   if(error?.code === 'P2025') {
+     // Não encontrou e não excluiu ~> HTTP 404: Not Found
+     res.status(404).end()
+   }
+   else {
+     // Outros tipos de erro
+     console.error(error)
+
+
+     // HTTP 500: Internal Server Error
+     res.status(500).end()
+   }
+ }
 }
+
 
 controller.login = async function (req, res) {
   try {
