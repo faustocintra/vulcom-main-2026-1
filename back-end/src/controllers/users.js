@@ -1,219 +1,225 @@
-import prisma from '../database/client.js'
-import jwt from 'jsonwebtoken'
+import prisma from "../database/client.js";
+import jwt from "jsonwebtoken";
 
-import argon2 from 'argon2'
-
+import argon2 from "argon2";
 
 const ARGON2_CONFIG = {
- type: argon2.argon2id,  // variante recomendada do algoritmo
- memoryCost: 65536,      // 64 KB de memória máxima utilizada
- timeCost: 3,            // número de iterações
- parallelism: 4          // número de threads simultâneas
-}
+  type: argon2.argon2id, // variante recomendada do algoritmo
+  memoryCost: 65536, // 64 KB de memória máxima utilizada
+  timeCost: 3, // número de iterações
+  parallelism: 4, // número de threads simultâneas
+};
 
+const controller = {}; // Objeto vazio
 
-const controller = {}     // Objeto vazio
-
-controller.create = async function(req, res) {
+controller.create = async function (req, res) {
   try {
+    // Somente usuários administradores podem acessar este recurso
+    // HTTP 403: Forbidden(
+    if (!req?.authUser?.is_admin) return res.status(403).end();
+
     // Caso exista o campo "password" em req.body, é
     // necessário gerar o hash da senha antes de
     // armazená-la no BD, usando o algoritmo argon2
-    if(req.body.password) {
-      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+    if (req.body.password) {
+      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG);
     }
- 
- 
-    await prisma.user.create({ data: req.body })
- 
- 
-    // HTTP 201: Created
-    res.status(201).end()
-  }
-  catch(error) {
-    console.error(error)
- 
- 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
- }
- 
 
-controller.retrieveAll = async function(req, res) {
+    await prisma.user.create({ data: req.body });
+
+    // HTTP 201: Created
+    res.status(201).end();
+  } catch (error) {
+    console.error(error);
+
+    // HTTP 500: Internal Server Error
+    res.status(500).end();
+  }
+};
+
+controller.retrieveAll = async function (req, res) {
   try {
-    const result = await prisma.user.findMany()
+    // Somente usuários administradores podem acessar este recurso
+    // HTTP 403: Forbidden
+    if (!req?.authUser?.is_admin) return res.status(403).end();
+
+    const result = await prisma.user.findMany({
+      omit: { password: true },
+    });
 
     // HTTP 200: OK (implícito)
-    res.send(result)
-  }
-  catch(error) {
-    console.error(error)
+    res.send(result);
+  } catch (error) {
+    console.error(error);
 
     // HTTP 500: Internal Server Error
-    res.status(500).end()
+    res.status(500).end();
   }
-}
+};
 
 controller.retrieveOne = async function(req, res) {
-  try {
-    const result = await prisma.user.findUnique({
-      where: { id: Number(req.params.id) }
-    })
+ try {
 
-    // Encontrou ~> retorna HTTP 200: OK (implícito)
-    if(result) res.send(result)
-    // Não encontrou ~> retorna HTTP 404: Not Found
-    else res.status(404).end()
-  }
-  catch(error) {
-    console.error(error)
 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
+   // Somente usuários administradores ou o próprio usuário
+   // autenticado podem acessar este recurso
+   // HTTP 403: Forbidden
+   if(! (req?.authUser?.is_admin ||
+     Number(req?.authUser?.id) === Number(req.params.id)))
+     return res.status(403).end()
+
+
+   const result = await prisma.user.findUnique({
+     omit: { password: true },
+     where: { id: Number(req.params.id) }
+   })
+
+
+   // Encontrou ~> retorna HTTP 200: OK (implícito)
+   if(result) res.send(result)
+   // Não encontrou ~> retorna HTTP 404: Not Found
+   else res.status(404).end()
+ }
+ catch(error) {
+   console.error(error)
+
+
+   // HTTP 500: Internal Server Error
+   res.status(500).end()
+ }
 }
 
-controller.update = async function(req, res) {
+
+controller.update = async function (req, res) {
   try {
+    // Somente usuários administradores ou o próprio usuário
+   // autenticado podem acessar este recurso
+   // HTTP 403: Forbidden
+    if(! (req?.authUser?.is_admin ||
+      Number(req?.authUser?.id) === Number(req.params.id)))
+      return res.status(403).end()
     // Caso exista o campo "password" em req.body, é
     // necessário gerar o hash da senha antes de
     // armazená-la no BD, usando o algoritmo argon2
-    if(req.body.password) {
-      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+    if (req.body.password) {
+      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG);
     }
- 
- 
+
     const result = await prisma.user.update({
       where: { id: Number(req.params.id) },
-      data: req.body
-    })
- 
- 
-    // Encontrou e atualizou ~> HTTP 204: No Content
-    if(result) res.status(204).end()
-    // Não encontrou (e não atualizou) ~> HTTP 404: Not Found
-    else res.status(404).end()
-  }
-  catch(error) {
-    console.error(error)
- 
- 
-    // HTTP 500: Internal Server Error
-    res.status(500).end()
-  }
- }
- 
+      data: req.body,
+    });
 
-controller.delete = async function(req, res) {
+    // Encontrou e atualizou ~> HTTP 204: No Content
+    if (result) res.status(204).end();
+    // Não encontrou (e não atualizou) ~> HTTP 404: Not Found
+    else res.status(404).end();
+  } catch (error) {
+    console.error(error);
+
+    // HTTP 500: Internal Server Error
+    res.status(500).end();
+  }
+};
+
+controller.delete = async function (req, res) {
   try {
+
+    // Somente usuários administradores podem acessar este recurso
+    // HTTP 403: Forbidden
+    if(! req?.authUser?.is_admin) return res.status(403).end()
+      
     await prisma.user.delete({
-      where: { id: Number(req.params.id) }
-    })
+      where: { id: Number(req.params.id) },
+    });
 
     // Encontrou e excluiu ~> HTTP 204: No Content
-    res.status(204).end()
-  }
-  catch(error) {
-    if(error?.code === 'P2025') {
+    res.status(204).end();
+  } catch (error) {
+    if (error?.code === "P2025") {
       // Não encontrou e não excluiu ~> HTTP 404: Not Found
-      res.status(404).end()
-    }
-    else {
+      res.status(404).end();
+    } else {
       // Outros tipos de erro
-      console.error(error)
+      console.error(error);
 
       // HTTP 500: Internal Server Error
-      res.status(500).end()
+      res.status(500).end();
     }
   }
-}
+};
 
-controller.login = async function(req, res) {
+controller.login = async function (req, res) {
   try {
- 
- 
-      // Busca o usuário no BD usando o valor dos campos
-      // "username" OU "email"
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { username: req.body?.username },
-            { email: req.body?.email }
-          ]
-        }
-      })
- 
- 
-      // Se o usuário não for encontrado, retorna
-      // HTTP 401: Unauthorized
-      if(! user) return res.status(401).end()
- 
- 
-      // Usuário encontrado, vamos conferir a senha
-      // let passwordIsValid
-      // if(req.body?.username === 'admin' && req.body?.password === 'admin123') passwordIsValid = true
-      // else passwordIsValid = user.password === req.body?.password
- 
- 
-      let passwordIsValid
-      if(req.body?.username === 'admin' && req.body?.password === 'admin123') passwordIsValid = true
-      else passwordIsValid = await argon2.verify(user.password, req.body?.password)
- 
- 
-      // Se a senha estiver errada, retorna
-      // HTTP 401: Unauthorized
-      if(! passwordIsValid) return res.status(401).end()
+    // Busca o usuário no BD usando o valor dos campos
+    // "username" OU "email"
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ username: req.body?.username }, { email: req.body?.email }],
+      },
+    });
 
+    // Se o usuário não for encontrado, retorna
+    // HTTP 401: Unauthorized
+    if (!user) return res.status(401).end();
 
-      // Eliminamos o campo "password" dos dados do usuário antes de incluí-lo
-      // no payload do token JWT
-      if(user.password) delete user.password
-      // Usuário e senha OK, passamos ao procedimento de gerar o token
-      const token = jwt.sign(
-        user,                       // Dados do usuário
-        process.env.TOKEN_SECRET,   // Senha para criptografar o token
-        { expiresIn: '24h' }        // Prazo de validade do token
-      )
+    let passwordIsValid;
 
-      // Formamos o cookie para enviar ao front-end
-      res.cookie(process.env.AUTH_COOKIE_NAME, token, {
-        httpOnly: true, // O cookie ficará inacessível para o JS no front-end
-        secure: true,   // O cookie será criptografado em conexões https
-        sameSite: 'None',
-        path: '/',
-        maxAge: 24 * 60 * 60 * 100  // 24h
-      })
+    if (req.body?.username === "admin" && req.body?.password === "admin123")
+      passwordIsValid = true;
+    else
+      passwordIsValid = await argon2.verify(user.password, req.body?.password);
 
-      // Retorna o token e o usuário autenticado com
-      // HTTP 200: OK (implícito)
-      res.send({user})
+    // Se a senha estiver errada, retorna
+    // HTTP 401: Unauthorized
+    if (!passwordIsValid) return res.status(401).end();
 
-  }
-  catch(error) {
-    console.error(error)
+    // Eliminamos o campo "password" dos dados do usuário antes de incluí-lo
+    // no payload do token JWT
+    if (user.password) delete user.password;
+
+    // Usuário e senha OK, passamos ao procedimento de gerar o token
+    const token = jwt.sign(
+      user, // Dados do usuário
+      process.env.TOKEN_SECRET, // Senha para criptografar o token
+      { expiresIn: "24h" }, // Prazo de validade do token
+    );
+
+    // Formamos o cookie para enviar ao front-end
+    res.cookie(process.env.AUTH_COOKIE_NAME, token, {
+      httpOnly: true, // O cookie ficará inacessível para o JS no front-end
+      secure: true, // O cookie será criptografado em conexões https
+      sameSite: "None",
+      path: "/",
+      maxAge: 24 * 60 * 60 * 100, // 24h
+    });
+
+    // Retorna o token e o usuário autenticado com
+    // HTTP 200: OK (implícito)
+    res.send({ user });
+  } catch (error) {
+    console.error(error);
 
     // HTTP 500: Internal Server Error
-    res.status(500).end()
+    res.status(500).end();
   }
-}
+};
 
-controller.me = function(req, res) {
+controller.me = function (req, res) {
   // Retorna as informações do usuário autenticado
   // HTTP 200: OK (implícito)
-  res.send(req?.authUser)
-}
+  res.send(req?.authUser);
+};
 
-controller.logout = function(req, res) {
+controller.logout = function (req, res) {
   // Apaga no front-end o cookie que armazena o token de autorização
   res.clearCookie(process.env.AUTH_COOKIE_NAME, {
-    path: '/',
+    path: "/",
     secure: true,
-    sameSite: 'None'
-  })
+    sameSite: "None",
+  });
   // HTTP 204: No Content
-  res.status(204).end()
- }
- 
+  res.status(204).end();
+};
 
-export default controller
+export default controller;
