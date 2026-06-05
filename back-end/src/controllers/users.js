@@ -22,6 +22,17 @@ controller.create = async function(req, res) {
      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
    }
 
+    // Somente usuários administradores podem acessar este recurso
+    // HTTP 403: Forbidden
+    if(! req?.authUser?.is_admin) return res.status(403).end()
+
+    // Caso exista o campo "password" em req.body, é
+    // necessário gerar o hash da senha antes de
+    // armazená-la no BD, usando o algoritmo argon2
+    if(req.body.password) {
+      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+    }
+
     await prisma.user.create({ data: req.body })
 
     // HTTP 201: Created
@@ -98,6 +109,20 @@ controller.update = async function(req, res) {
      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
    }
 
+
+    // Somente usuários administradores ou o próprio usuário
+    // autenticado podem acessar este recurso
+    // HTTP 403: Forbidden
+    if(! (req?.authUser?.is_admin || 
+      Number(req?.authUser?.id) === Number(req.params.id))) 
+      return res.status(403).end()
+
+    // Caso exista o campo "password" em req.body, é
+    // necessário gerar o hash da senha antes de
+    // armazená-la no BD, usando o algoritmo argon2
+    if(req.body.password) {
+      req.body.password = await argon2.hash(req.body.password, ARGON2_CONFIG)
+    }
 
     const result = await prisma.user.update({
       where: { id: Number(req.params.id) },
@@ -183,6 +208,8 @@ controller.login = async function(req, res) {
         { expiresIn: '24h' }        // Prazo de validade do token
       )
 
+      // (...código existente...)
+
       // Formamos o cookie para enviar ao front-end
       res.cookie(process.env.AUTH_COOKIE_NAME, token, {
         httpOnly: true, // O cookie ficará inacessível para o JS no front-end
@@ -191,6 +218,8 @@ controller.login = async function(req, res) {
         path: '/',
         maxAge: 24 * 60 * 60 * 100  // 24h
       })
+
+      // (...código existente...)
 
       // Retorna o token e o usuário autenticado com
       // HTTP 200: OK (implícito)
@@ -221,5 +250,17 @@ controller.me = function(req, res) {
   // HTTP 200: OK (implícito)
   res.send(req?.authUser)
 }
+
+controller.logout = function(req, res) {
+ // Apaga no front-end o cookie que armazena o token de autorização
+ res.clearCookie(process.env.AUTH_COOKIE_NAME, {
+   path: '/',
+   secure: true,
+   sameSite: 'None'
+ })
+ // HTTP 204: No Content
+ res.status(204).end()
+}
+
 
 export default controller
